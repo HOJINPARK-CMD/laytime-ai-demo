@@ -1,0 +1,1071 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>체선 정산 AI 에이전트 (프로토타입)</title>
+<style>
+:root{
+  color-scheme: light;
+  --paper:#F2F4F5; --surface:#FFFFFF; --sunk:#F7F9FA;
+  --ink:#172430; --ink-2:#4B5A66; --ink-3:#7A8792;
+  --rule:#DCE2E7; --rule-2:#C9D2D9;
+  --harbor:#1C4B6E; --harbor-2:#2F6A93; --harbor-3:#9DB8CD; --harbor-wash:#E7EFF5;
+  --dem:#B4372A; --dem-wash:#FBEBE8;
+  --warn:#8A5A00; --warn-line:#D49A22; --warn-wash:#FFF4DC;
+  --ok:#2C6B45; --ok-wash:#E4F1E8;
+  --excl:#8E9BA6;
+  --r-s:4px; --r-m:8px;
+  --f: "Pretendard","Apple SD Gothic Neo","Malgun Gothic","맑은 고딕","Noto Sans KR","Noto Sans CJK KR",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html{background:var(--paper)}
+body{font-family:var(--f);color:var(--ink);background:var(--paper);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;word-break:keep-all;overflow-wrap:break-word}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--harbor-2);outline-offset:2px;border-radius:3px}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+
+/* header */
+.top{background:var(--harbor);color:#fff}
+.top .wrap{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding-top:18px;padding-bottom:16px;flex-wrap:wrap}
+.brand h1{font-size:21px;font-weight:800;letter-spacing:-.3px}
+.brand p{font-size:13.5px;color:#C9DBE8;margin-top:2px}
+.context{display:flex;gap:20px;font-size:13px;color:#C9DBE8;flex-wrap:wrap}
+.context b{color:#fff;font-weight:600}
+.notice{background:#14395A;color:#DCE8F1;font-size:13.5px}
+.notice .wrap{padding-top:9px;padding-bottom:9px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.notice strong{color:#fff;font-weight:700}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;line-height:1.6}
+.pill-demo{background:#F2C14E;color:#3B2A00}
+
+/* stepper */
+.steps{background:var(--surface);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:20}
+.steps ol{list-style:none;display:flex;gap:0;overflow-x:auto}
+.steps li{flex:1 0 auto}
+.steps button{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;border-bottom:3px solid transparent;padding:13px 16px 11px;cursor:pointer;text-align:left;color:var(--ink-2);white-space:nowrap}
+.steps button:hover{color:var(--ink)}
+.steps .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1.5px solid var(--rule-2);font-size:12.5px;font-weight:700;color:var(--ink-2);flex-shrink:0}
+.steps .t{font-size:14.5px;font-weight:600}
+.steps .s{display:block;font-size:12px;color:var(--ink-3);font-weight:400}
+.steps button[aria-current="step"]{border-bottom-color:var(--harbor);color:var(--ink)}
+.steps button[aria-current="step"] .n{background:var(--harbor);border-color:var(--harbor);color:#fff}
+.steps button.done .n{background:var(--ok-wash);border-color:var(--ok);color:var(--ok)}
+
+/* layout */
+main{padding:26px 0 56px}
+.screen{display:none}
+.screen.on{display:block}
+.head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.head h2{font-size:24px;font-weight:800;letter-spacing:-.4px}
+.head p{color:var(--ink-2);font-size:14.5px;margin-top:3px;max-width:68ch}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-m)}
+.panel-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--rule)}
+.panel-h h3{font-size:16px;font-weight:700}
+.panel-h .aside{font-size:13px;color:var(--ink-3)}
+.panel-b{padding:16px 18px}
+.grid-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.grid-main{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr);gap:18px;align-items:start}
+.stack{display:grid;gap:18px;grid-template-columns:minmax(0,1fr)}
+.stack>*,.grid-main>*,.grid-2>*{min-width:0}
+@media (max-width:960px){.grid-2,.grid-main{grid-template-columns:minmax(0,1fr)}}
+
+.btn{display:inline-flex;align-items:center;gap:8px;border-radius:6px;padding:9px 16px;font-size:14.5px;font-weight:700;cursor:pointer;border:1.5px solid var(--harbor);background:var(--harbor);color:#fff}
+.btn:hover{background:#163E5C}
+.btn.ghost{background:var(--surface);color:var(--harbor)}
+.btn.ghost:hover{background:var(--harbor-wash)}
+.btn.small{padding:5px 11px;font-size:13px;font-weight:600}
+.btn[disabled]{background:#C7D1D9;border-color:#C7D1D9;color:#fff;cursor:not-allowed}
+.btn.ghost[disabled]{background:var(--surface);color:var(--ink-3);border-color:var(--rule-2)}
+.next{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center}
+.next .hint{font-size:13.5px;color:var(--ink-3)}
+
+/* ledger strip (S1, S5) */
+.ledger{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-m);margin-bottom:18px}
+.ledger div{padding:14px 18px;border-left:1px solid var(--rule)}
+.ledger div:first-child{border-left:0}
+.ledger dt{font-size:13px;color:var(--ink-2)}
+.ledger dd{font-size:26px;font-weight:700;letter-spacing:-.5px;margin-top:2px}
+.ledger dd small{font-size:13.5px;font-weight:500;color:var(--ink-3);margin-left:4px;letter-spacing:0}
+@media (max-width:760px){.ledger{grid-template-columns:repeat(2,minmax(0,1fr))}.ledger div:nth-child(3){border-left:0}.ledger div:nth-child(n+3){border-top:1px solid var(--rule)}}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:600;color:var(--ink-2);font-size:13px;padding:9px 12px;border-bottom:1px solid var(--rule-2);background:var(--sunk);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.tbl-scroll{overflow-x:auto}
+td.r,th.r{text-align:right}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;border-radius:4px;padding:2px 8px;white-space:nowrap}
+.tag-wait{background:var(--sunk);color:var(--ink-2);border:1px solid var(--rule)}
+.tag-run{background:var(--harbor-wash);color:var(--harbor)}
+.tag-ok{background:var(--ok-wash);color:var(--ok)}
+.tag-warn{background:var(--warn-wash);color:var(--warn)}
+.tag-dem{background:var(--dem-wash);color:var(--dem)}
+tr.sel td{background:#F4F8FB}
+tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--harbor)}
+
+/* alerts */
+.alert{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--r-m);border:1px solid;font-size:14px}
+.alert .ic{flex-shrink:0;width:20px;height:20px;margin-top:1px}
+.alert b{font-weight:700}
+.alert-warn{background:var(--warn-wash);border-color:#EDCB80;color:#4A3300}
+.alert-dem{background:var(--dem-wash);border-color:#EBB8B0;color:#5A1A12}
+.alert-info{background:var(--harbor-wash);border-color:#BFD3E2;color:#163A55}
+.alert-ok{background:var(--ok-wash);border-color:#B6D6C1;color:#1D4A2F}
+
+/* S1 upload */
+.drop{border:1.5px dashed var(--rule-2);border-radius:var(--r-m);padding:22px;text-align:center;background:var(--sunk)}
+.drop p{color:var(--ink-2);font-size:14px}
+.drop .big{font-size:16px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.files{list-style:none;margin-top:14px;display:grid;gap:8px}
+.files li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 12px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);font-size:14px}
+.files .fn{font-weight:600}
+.files .cls{font-size:13px;color:var(--ink-2)}
+.bar{grid-column:1/-1;height:4px;background:var(--harbor-wash);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--harbor-2);transition:width .9s ease}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+
+/* S2 scan */
+.scan{background:#FBFAF6;border:1px solid #E4E0D5;border-radius:4px;padding:22px 22px 26px;font-family:"Courier New",Courier,monospace;font-size:13px;color:#2B2A26;position:relative;box-shadow:0 1px 0 #E9E5DA;transform:rotate(-.35deg);filter:contrast(.96)}
+.scan h4{font-family:inherit;text-align:center;font-size:14.5px;letter-spacing:1px;margin-bottom:4px}
+.scan .meta{display:grid;grid-template-columns:auto 1fr;gap:1px 12px;font-size:12px;margin:10px 0 12px;color:#4A4840}
+.scan ol{list-style:none;border-top:1px solid #CFCABD}
+.scan li{display:grid;grid-template-columns:118px 1fr;gap:10px;padding:5px 6px;border-bottom:1px dotted #D7D2C6}
+.scan li.hand span:first-child{font-family:"Segoe Print","Bradley Hand","Comic Sans MS",cursive;font-style:italic;filter:blur(.35px);color:#3F3A80}
+.scan li.hl{background:#FFF0B8;outline:2px solid var(--warn-line)}
+.stamp{position:absolute;right:20px;bottom:14px;border:2px solid #A33B3B;color:#A33B3B;border-radius:50%;width:92px;height:92px;display:grid;place-items:center;text-align:center;font-size:10.5px;line-height:1.25;transform:rotate(-14deg);opacity:.75;font-family:var(--f);font-weight:700}
+.conf{display:flex;align-items:center;gap:7px;font-size:13px}
+.conf .m{width:54px;height:6px;border-radius:3px;background:var(--harbor-wash);overflow:hidden}
+.conf .m i{display:block;height:100%;background:var(--harbor-2)}
+.conf.low .m{background:#F6E6C3}
+.conf.low .m i{background:var(--warn-line)}
+tr.need td{background:#FFFBF1}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.edit{display:none;margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap}
+.edit.on{display:flex}
+.edit input{border:1px solid var(--rule-2);border-radius:5px;padding:4px 8px;font-size:13.5px}
+.err{color:var(--dem);font-size:12.5px;width:100%}
+
+/* timeline svg */
+.tl{width:100%;height:auto;display:block}
+.tl text{font-family:var(--f)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:16px;height:10px;border-radius:2px;display:inline-block}
+
+/* S3 decision */
+.decide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:860px){.decide{grid-template-columns:minmax(0,1fr)}}
+.opt{position:relative;display:block;border:1.5px solid var(--rule-2);border-radius:var(--r-m);padding:14px 14px 13px;background:var(--surface);cursor:pointer}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt:hover{border-color:var(--harbor-3)}
+.opt.on{border-color:var(--harbor);box-shadow:0 0 0 1px var(--harbor);background:#F7FAFC}
+.opt .k{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.opt .lb{font-size:14.5px;font-weight:700}
+.opt .rd{width:18px;height:18px;border-radius:50%;border:2px solid var(--rule-2);flex-shrink:0;margin-top:2px}
+.opt.on .rd{border:5px solid var(--harbor)}
+.opt .amt{font-size:24px;font-weight:800;letter-spacing:-.4px;margin:8px 0 4px}
+.opt .amt.zero{color:var(--ink-3)}
+.opt .why{font-size:13px;color:var(--ink-2);line-height:1.5}
+.opt .src{font-size:12.5px;color:var(--ink-3);margin-top:6px}
+.result{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.45fr);border-top:1px solid var(--rule)}
+.result div{padding:12px 16px;border-left:1px solid var(--rule)}
+.result div:first-child{border-left:0}
+.result dt{font-size:12.5px;color:var(--ink-2)}
+.result dd{font-size:17px;font-weight:700;margin-top:2px}
+.result .hero dd{font-size:26px;color:var(--dem);letter-spacing:-.4px;white-space:nowrap}
+.result .hero.zero dd{color:var(--ink-3)}
+@media (max-width:860px){.result{grid-template-columns:repeat(2,minmax(0,1fr))}.result div{border-left:0;border-top:1px solid var(--rule)}.result .hero{grid-column:1/-1}}
+tr.k-excl td{color:var(--ink-2);background:repeating-linear-gradient(135deg,#F5F7F8 0 6px,#EEF1F3 6px 7px)}
+tr.k-dem td{background:#FFF8F6}
+tr.k-mark td{background:var(--dem-wash);color:var(--dem);font-weight:700;padding:7px 12px}
+.note{display:block;font-size:12.5px;color:var(--dem);margin-top:2px}
+.clause{border-bottom:1px solid var(--rule);padding:12px 0}
+.clause:first-child{padding-top:0}
+.clause:last-child{border-bottom:0;padding-bottom:0}
+.clause .no{font-size:12.5px;font-weight:700;color:var(--harbor)}
+.clause q{display:block;font-family:Georgia,"Times New Roman",serif;font-size:13px;color:var(--ink-2);margin:4px 0 6px;quotes:none;line-height:1.5;border-left:2px solid var(--rule-2);padding-left:9px}
+.clause .ko{font-size:13.5px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{font-size:12px;font-weight:600;color:var(--harbor);background:var(--harbor-wash);border-radius:4px;padding:2px 7px}
+.prenote{font-size:13.5px;color:var(--ink-2);padding:10px 12px;background:var(--sunk);border-bottom:1px solid var(--rule)}
+
+/* S4 document */
+.doc{background:#fff;border:1px solid var(--rule-2);border-radius:4px;box-shadow:0 2px 0 var(--rule);padding:28px 30px;font-size:14px}
+.doc h4{font-size:19px;font-weight:800;text-align:center;letter-spacing:-.2px}
+.doc .sub{text-align:center;font-size:12.5px;color:var(--ink-3);margin-bottom:16px}
+.doc dl{display:grid;grid-template-columns:132px 1fr;gap:6px 14px;padding:12px 0;border-top:1.5px solid var(--ink);border-bottom:1px solid var(--rule-2)}
+.doc dt{color:var(--ink-2);font-size:13.5px}
+.doc .sum{margin:14px 0;border:1px solid var(--rule-2);border-radius:4px}
+.doc .sum div{display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--rule)}
+.doc .sum div:last-child{border-bottom:0;background:var(--dem-wash);font-weight:800;font-size:15.5px}
+.doc .sum div.zero:last-child{background:var(--sunk)}
+.doc h5{font-size:14px;font-weight:700;margin:14px 0 6px}
+.doc ul{padding-left:18px;font-size:13.5px;color:var(--ink-2)}
+.doc li{margin:2px 0}
+.doc .sign{display:flex;justify-content:space-between;margin-top:18px;font-size:13px;color:var(--ink-3);flex-wrap:wrap;gap:8px}
+.seg{display:inline-flex;border:1.5px solid var(--harbor);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--surface);color:var(--harbor);padding:5px 12px;font-size:13px;font-weight:700;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--harbor);color:#fff}
+.dday{display:flex;align-items:baseline;gap:10px}
+.dday b{font-size:40px;font-weight:800;letter-spacing:-1px;color:var(--harbor)}
+.dday span{color:var(--ink-2);font-size:14px}
+.flow{list-style:none;display:grid;gap:0}
+.flow li{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:10px 0;border-bottom:1px solid var(--rule)}
+.flow li:last-child{border-bottom:0}
+.flow .d{width:22px;height:22px;border-radius:50%;border:2px solid var(--rule-2);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--ink-3)}
+.flow li.done .d{background:var(--ok);border-color:var(--ok);color:#fff}
+.flow li.cur .d{border-color:var(--harbor);color:var(--harbor)}
+.flow .t{font-weight:700;font-size:14px}
+.flow .s{font-size:13px;color:var(--ink-2)}
+.checks{display:grid;gap:6px;font-size:14px}
+.checks label{display:flex;gap:8px;align-items:center}
+.checks input{width:16px;height:16px;accent-color:var(--harbor)}
+
+/* S5 charts */
+.chart{width:100%;height:auto;display:block}
+.chart text{font-family:var(--f)}
+.signal{display:grid;grid-template-columns:auto 1fr;gap:14px 12px;align-items:start}
+.signal .lvl.watch{color:var(--harbor);background:var(--harbor-wash);border-color:#BFD3E2}
+.signal .lvl{display:inline-flex;align-items:center;gap:6px;font-weight:800;color:var(--warn);background:var(--warn-wash);border:1px solid #EDCB80;border-radius:6px;padding:6px 10px;font-size:14px;white-space:nowrap}
+.tblview summary{cursor:pointer;font-size:13.5px;color:var(--harbor);font-weight:600;padding:10px 18px;border-top:1px solid var(--rule)}
+
+/* tooltip + toast */
+#tip{position:fixed;pointer-events:none;background:#14212B;color:#fff;font-size:12.5px;line-height:1.45;padding:7px 10px;border-radius:6px;max-width:260px;z-index:50;opacity:0;transition:opacity .08s}
+#tip.on{opacity:1}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s,transform .2s;z-index:60;max-width:90vw}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+
+footer{border-top:1px solid var(--rule);background:var(--surface);font-size:13px;color:var(--ink-3)}
+footer .wrap{padding-top:16px;padding-bottom:20px}
+.mt{margin-top:18px}
+.muted{color:var(--ink-3)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>체선 정산 AI 에이전트</h1>
+      <p>중소 벌크·탱커선사를 위한 정박기간·체선료 정산과 항만 체선 데이터 허브</p>
+    </div>
+    <div class="context">
+      <span>사용자 <b>A해운 정산팀</b></span>
+      <span>시연 기준일 <b class="num">2026-09-12</b></span>
+    </div>
+  </div>
+</header>
+<div class="notice">
+  <div class="wrap">
+    <span class="pill pill-demo">시연용 프로토타입</span>
+    <span>로그인 없이 위 단계를 순서대로 눌러 보세요. <strong>모든 데이터는 가상</strong>이며, 문서 판독 결과는 미리 구성한 값이고 <strong>정박기간 계산 엔진은 실제로 동작</strong>합니다.</span>
+  </div>
+</div>
+
+<nav class="steps" aria-label="정산 단계">
+  <div class="wrap">
+    <ol>
+      <li><button data-go="1"><span class="n">1</span><span><span class="t">정산 현황·업로드</span><span class="s">문서 올리기</span></span></button></li>
+      <li><button data-go="2"><span class="n">2</span><span><span class="t">문서 판독 결과</span><span class="s">AI 추출 확인</span></span></button></li>
+      <li><button data-go="3"><span class="n">3</span><span><span class="t">정박기간 계산</span><span class="s">쟁점 판단·재계산</span></span></button></li>
+      <li><button data-go="4"><span class="n">4</span><span><span class="t">정산서·청구 관리</span><span class="s">확정·기한 알림</span></span></button></li>
+      <li><button data-go="5"><span class="n">5</span><span><span class="t">항만 체선 대시보드</span><span class="s">데이터 허브</span></span></button></li>
+    </ol>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+
+<!-- S1 -->
+<section class="screen" id="s1" aria-labelledby="s1h">
+  <div class="head">
+    <div>
+      <h2 id="s1h">정산 현황</h2>
+      <p>하역이 끝난 항차의 정산 진행 상태와 청구 기한을 한눈에 봅니다. 정산할 항차를 고르고 대리점에서 받은 문서를 올리세요.</p>
+    </div>
+  </div>
+
+  <dl class="ledger">
+    <div><dt>정산 진행 중인 항차</dt><dd class="num">4<small>건</small></dd></div>
+    <div><dt>청구 기한 30일 이내</dt><dd class="num">1<small>건</small></dd></div>
+    <div><dt>확인이 필요한 판독 항목</dt><dd class="num" id="k-need">0<small>건</small></dd></div>
+    <div><dt>이번 달 하역 완료</dt><dd class="num">2<small>항차</small></dd></div>
+  </dl>
+
+  <div class="alert alert-warn" style="margin-bottom:18px">
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 L19 17 H1 Z" fill="none" stroke="#B07A12" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 7.5v4.5M10 14.2v.3" stroke="#B07A12" stroke-width="1.9" stroke-linecap="round"/></svg>
+    <div><b>청구 기한 임박</b> M/V 블루 C호(V-2607-D, D항 양하)의 체선료 청구 기한이 <b class="num">D-10</b>(2026-09-22)입니다. 현재 운항팀장 승인 대기 중입니다.</div>
+  </div>
+
+  <div class="grid-main">
+    <div class="panel">
+      <div class="panel-h"><h3>항차별 정산 상태</h3><span class="aside">가상 데이터</span></div>
+      <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>항차</th><th>선박</th><th>항만</th><th>하역 완료</th><th>상태</th><th class="r">청구 기한</th></tr></thead>
+        <tbody>
+          <tr class="sel"><td class="num"><b>V-2609-K</b></td><td>M/V 가상호<br><span class="muted">수프라막스</span></td><td>K항 양하</td><td class="num">09-09 14:00</td><td id="st-k"></td><td class="r num" id="dd-k"></td></tr>
+          <tr><td class="num">V-2609-A</td><td>M/V 그린 D호</td><td>A항 선적</td><td class="num">09-10 18:00</td><td><span class="tag tag-wait">문서 대기</span></td><td class="r num">D-88</td></tr>
+          <tr><td class="num">V-2608-B</td><td>M/V 오션 B호</td><td>B항 선적</td><td class="num">08-21 09:00</td><td><span class="tag tag-ok">청구 완료</span></td><td class="r num muted">-</td></tr>
+          <tr><td class="num">V-2607-D</td><td>M/V 블루 C호</td><td>D항 양하</td><td class="num">06-24 11:00</td><td><span class="tag tag-warn">승인 대기</span></td><td class="r num"><b style="color:var(--warn)">D-10</b></td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><h3>문서 업로드</h3><span class="aside num">V-2609-K</span></div>
+      <div class="panel-b">
+        <div class="drop">
+          <p class="big">SOF·NOR·C/P 파일을 이곳에 올리세요</p>
+          <p>스캔 PDF, 사진, 워드 파일 모두 가능합니다. 문서 종류는 AI가 자동으로 분류합니다.</p>
+          <p class="mt"><button class="btn" id="b-sample">샘플 문서로 시연하기</button></p>
+        </div>
+        <ul class="files" id="files" aria-live="polite"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="next">
+    <span class="hint" id="s1hint">샘플 문서를 올리면 판독 결과를 확인할 수 있습니다.</span>
+    <button class="btn" id="b-to2" disabled>판독 결과 확인하기</button>
+  </div>
+</section>
+
+<!-- S2 -->
+<section class="screen" id="s2" aria-labelledby="s2h">
+  <div class="head">
+    <div>
+      <h2 id="s2h">문서 판독 결과</h2>
+      <p>AI가 SOF에서 시각별 이벤트를 뽑아 표준 항목으로 정리했습니다. 판독 신뢰도가 낮은 항목만 원문과 대조해 확인하면 됩니다.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-warn" id="need-alert" style="margin-bottom:18px">
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 L19 17 H1 Z" fill="none" stroke="#B07A12" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 7.5v4.5M10 14.2v.3" stroke="#B07A12" stroke-width="1.9" stroke-linecap="round"/></svg>
+    <div id="need-text"></div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-h"><h3>SOF 원문</h3><span class="aside">대리점 발행 스캔본 (가상)</span></div>
+      <div class="panel-b" style="padding:22px">
+        <div class="scan" id="scan">
+          <h4>STATEMENT OF FACTS</h4>
+          <div style="text-align:center;font-size:11.5px">K PORT SHIPPING AGENCY (FICTITIOUS)</div>
+          <div class="meta">
+            <span>Vessel</span><span>M/V GASANG (fictitious)</span>
+            <span>Cargo</span><span>Steam coal in bulk, 55,000 MT</span>
+            <span>Port</span><span>K Port, discharging</span>
+          </div>
+          <ol id="scan-lines"></ol>
+          <div class="stamp">K PORT<br>AGENCY<br>2026.09.09</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><h3>AI 추출 이벤트</h3><span class="aside" id="conf-sum"></span></div>
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr><th>표준 항목</th><th>일시</th><th>신뢰도</th></tr></thead>
+          <tbody id="ev-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel mt">
+    <div class="panel-h"><h3>하역 타임라인</h3><span class="aside">SOF 기록 기준, 마우스를 올리면 세부 정보</span></div>
+    <div class="panel-b">
+      <svg class="tl" id="tl-facts" viewBox="0 0 1000 120" role="img" aria-label="하역 타임라인"></svg>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--harbor-3)"></i>정박지 대기</span>
+        <span><i class="sw" style="background:#5B86A6"></i>접안·하역 준비</span>
+        <span><i class="sw" style="background:var(--harbor)"></i>하역 중</span>
+        <span><i class="sw" style="background:var(--warn-line)"></i>선창 검사 불합격</span>
+        <span><svg width="16" height="10" aria-hidden="true"><rect width="16" height="10" fill="url(#hatchL)"/></svg>우천 하역 중단</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="next">
+    <span class="hint" id="s2hint"></span>
+    <button class="btn" id="b-to3">정박기간 계산하기</button>
+  </div>
+</section>
+
+<!-- S3 -->
+<section class="screen" id="s3" aria-labelledby="s3h">
+  <div class="head">
+    <div>
+      <h2 id="s3h">정박기간 계산</h2>
+      <p>규칙 엔진이 C/P 조항을 적용해 계산합니다. 다툼 소지가 있는 쟁점은 판단별 결과를 함께 보여주며, 판단은 담당자가 선택합니다.</p>
+    </div>
+  </div>
+
+  <div class="alert alert-dem" style="margin-bottom:12px">
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="#B4372A" stroke-width="1.8"/><path d="M10 5.5v5.5M10 13.8v.3" stroke="#B4372A" stroke-width="1.9" stroke-linecap="round"/></svg>
+    <div><b>쟁점 발견: 최초 NOR의 유효성</b> 09-01 08:00에 NOR를 제출했으나 09-03 11:00 선창 검사에서 불합격했습니다. 제출 당시 하역준비가 완료되지 않았을 수 있고, 재검사 합격 후 NOR를 다시 제출한 기록이 없습니다. 아래에서 판단을 선택하면 즉시 다시 계산합니다.</div>
+  </div>
+
+  <div class="decide" role="radiogroup" aria-label="최초 NOR 판단" id="decide"></div>
+  <p class="muted" style="font-size:13px;margin-top:8px">AI는 쟁점과 판단별 결과를 제시할 뿐이며, 판단은 담당자가 합니다. 금액이 큰 쟁점은 법무 또는 P&amp;I 자문을 권장합니다.</p>
+
+  <div class="panel mt">
+    <div class="panel-h"><h3>계산 결과</h3><span class="aside" id="dec-name"></span></div>
+    <dl class="result" id="result"></dl>
+    <div class="panel-b" style="border-top:1px solid var(--rule)">
+      <svg class="tl" id="tl-calc" viewBox="0 0 1000 170" role="img" aria-label="정박기간 산입 타임라인: 위는 SOF 기록, 아래는 산입 결과"></svg>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--harbor-2)"></i>정박기간 산입</span>
+        <span><svg width="16" height="10" aria-hidden="true"><rect width="16" height="10" fill="url(#hatchG)"/></svg>제외 (C/P 조항)</span>
+        <span><i class="sw" style="background:var(--dem)"></i>체선</span>
+        <span><i class="sw" style="background:var(--surface);border:1px solid var(--rule-2)"></i>산입 전</span>
+        <span class="muted">막대에 마우스를 올리면 구간별 근거가 보입니다</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-main mt">
+    <div class="stack">
+      <div class="alert alert-info" id="ooda" hidden>
+        <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="#2F6A93" stroke-width="1.8"/><path d="M10 9v5.2M10 6v.3" stroke="#2F6A93" stroke-width="1.9" stroke-linecap="round"/></svg>
+        <div><b>원칙 자동 적용: 한번 체선이면 계속 체선</b> <span id="ooda-t"></span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>구간별 계산표</h3><span class="aside">Laytime Statement</span></div>
+        <div class="prenote" id="prenote"></div>
+        <div class="tbl-scroll">
+          <table>
+            <thead><tr><th>구간</th><th>내용</th><th class="r">시간</th><th>처리</th><th class="r">산입 누계</th><th>근거</th></tr></thead>
+            <tbody id="stmt"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><h3>C/P 조항 구조화</h3><span class="aside">원문 인용 (가상 계약)</span></div>
+      <div class="panel-b" id="clauses"></div>
+    </div>
+  </div>
+
+  <div class="next">
+    <span class="hint">선택한 판단과 근거가 정산서에 그대로 기록됩니다.</span>
+    <button class="btn" id="b-to4">이 판단으로 정산서 만들기</button>
+  </div>
+</section>
+
+<!-- S4 -->
+<section class="screen" id="s4" aria-labelledby="s4h">
+  <div class="head">
+    <div>
+      <h2 id="s4h">정산서·청구 관리</h2>
+      <p>조항 근거가 붙은 정산서 초안을 검토하고 확정합니다. 청구 기한은 C/P 조항에서 자동으로 계산해 알림을 등록합니다.</p>
+    </div>
+    <div class="seg" role="group" aria-label="정산서 언어">
+      <button aria-pressed="true" data-lang="ko">국문</button><button aria-pressed="false" data-lang="en">영문</button>
+    </div>
+  </div>
+
+  <div class="grid-main">
+    <div class="doc" id="doc"></div>
+    <div class="stack">
+      <div class="panel">
+        <div class="panel-h"><h3>청구 기한</h3><span class="aside">C/P 제8조</span></div>
+        <div class="panel-b">
+          <div class="dday"><b class="num" id="dday"></b><span id="ddate"></span></div>
+          <p class="muted" style="font-size:13px;margin-top:4px">하역 완료 후 90일 안에 증빙을 갖춰 청구하지 않으면 청구권이 소멸합니다.</p>
+          <div class="checks mt" id="alarms"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3>확정·승인 진행</h3></div>
+        <div class="panel-b">
+          <ol class="flow" id="flow"></ol>
+          <div class="next" style="margin-top:12px;justify-content:flex-start">
+            <button class="btn" id="b-final">정산서 확정</button>
+            <button class="btn ghost" id="b-appr" disabled>운항팀장 승인 요청</button>
+          </div>
+        </div>
+      </div>
+      <div class="alert alert-info">
+        <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="#2F6A93" stroke-width="1.8"/><path d="M10 9v5.2M10 6v.3" stroke="#2F6A93" stroke-width="1.9" stroke-linecap="round"/></svg>
+        <div>정산서를 확정하면 선사·선박 정보를 지운 항차 데이터가 <b>K항 체선 지표</b>에 반영됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="next">
+    <button class="btn" id="b-to5">항만 체선 대시보드 보기</button>
+  </div>
+</section>
+
+<!-- S5 -->
+<section class="screen" id="s5" aria-labelledby="s5h">
+  <div class="head">
+    <div>
+      <h2 id="s5h">항만 체선 대시보드</h2>
+      <p>확정된 정산 데이터를 선사·선박 정보를 지운 뒤 국내 항만과 해외 선적항 단위로 모읍니다. 다음 항차 견적과 해상공급망 모니터링에 씁니다.</p>
+    </div>
+    <span class="aside muted" style="font-size:13px">최근 6개월 (2026-04 ~ 2026-09)</span>
+  </div>
+
+  <div class="alert alert-info" style="margin-bottom:18px">
+    <svg class="ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="8.5" width="13" height="9" rx="1.5" fill="none" stroke="#2F6A93" stroke-width="1.8"/><path d="M6.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="#2F6A93" stroke-width="1.8"/></svg>
+    <div><b>익명화 집계</b> 선사명·선박명·계약 금액은 저장하지 않고 항만별 시간 지표만 집계합니다. 집계 항차가 5건 미만인 항만은 표시하지 않습니다. <span class="pill pill-demo">시연용 가상 데이터</span></div>
+  </div>
+
+  <dl class="ledger" id="hub-kpi"></dl>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-h"><h3>항만별 평균 정박지 대기시간</h3><div class="seg" role="group" aria-label="항만 구분"><button aria-pressed="true" data-hub="dom">국내 항만</button><button aria-pressed="false" data-hub="ovs">해외 선적항</button></div></div>
+      <div class="panel-b"><svg class="chart" id="ch-bar" viewBox="0 0 520 250" role="img" aria-label="항만별 평균 정박지 대기시간 막대 그래프"></svg></div>
+      <details class="tblview"><summary>표로 보기</summary><div class="tbl-scroll"><table id="tb-ports"></table></div></details>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h3>K항 월별 평균 정박지 대기시간</h3><span class="aside">시간</span></div>
+      <div class="panel-b"><svg class="chart" id="ch-line" viewBox="0 0 520 250" role="img" aria-label="K항 월별 평균 정박지 대기시간 꺾은선 그래프"></svg></div>
+      <details class="tblview"><summary>표로 보기</summary><div class="tbl-scroll"><table id="tb-month"></table></div></details>
+    </div>
+  </div>
+
+  <div class="grid-2 mt">
+    <div class="panel">
+      <div class="panel-h"><h3>해상공급망 모니터링 연계 신호</h3><span class="aside">해진공 제공용</span></div>
+      <div class="panel-b signal" id="signal"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h3>다음 항차 견적 참고</h3><span class="aside">A해운 내부용</span></div>
+      <div class="panel-b" id="quote"></div>
+    </div>
+  </div>
+</section>
+
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    2026 해운·항만·물류 AX 혁신 아이디어 공모전 제출용 프로토타입입니다. 선사·선박·항만·계약 조건과 모든 수치는 가상이며 실존 기업·개인 정보를 포함하지 않습니다. 문서 판독(OCR·LLM)은 PoC 단계에서 구현할 기능으로, 여기서는 판독 결과를 미리 구성한 값으로 보여줍니다.
+  </div>
+</footer>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="hatchL" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#F7E3DF"/><line x1="0" y1="0" x2="0" y2="6" stroke="#C0574A" stroke-width="2.2"/></pattern>
+    <pattern id="hatchG" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#EEF1F3"/><line x1="0" y1="0" x2="0" y2="6" stroke="#8E9BA6" stroke-width="2.2"/></pattern>
+  </defs>
+</svg>
+<div id="tip" role="tooltip"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+var H = 3600000, DAY = 86400000;
+function T(d,h,m,mo){ return Date.UTC(2026,(mo||9)-1,d,h,m||0); }
+function p2(n){ return (n<10?"0":"")+n; }
+function dt(ts){ if(ts==null) return "-"; var d=new Date(ts); return p2(d.getUTCMonth()+1)+"-"+p2(d.getUTCDate())+" "+p2(d.getUTCHours())+":"+p2(d.getUTCMinutes()); }
+function dtFull(ts){ var d=new Date(ts); return d.getUTCFullYear()+"-"+dt(ts); }
+function dOnly(ts){ var d=new Date(ts); return d.getUTCFullYear()+"-"+p2(d.getUTCMonth()+1)+"-"+p2(d.getUTCDate()); }
+function hm(h){ var m=Math.round(h*60), hh=Math.floor(m/60), mm=m%60; return hh+"시간"+(mm?" "+mm+"분":""); }
+function hmEn(h){ var m=Math.round(h*60), hh=Math.floor(m/60), mm=m%60; return hh+" h"+(mm?" "+mm+" min":""); }
+function dhm(h){ var m=Math.round(h*60), d=Math.floor(m/1440), r=m%1440, hh=Math.floor(r/60), mm=r%60; return (d?d+"일 ":"")+hh+"시간"+(mm?" "+mm+"분":""); }
+function hh(h){ var m=Math.round(h*60), hr=Math.floor(m/60), mm=m%60; return hr+":"+p2(mm); }
+function usd(x){ return "USD "+x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function usd0(x){ return "USD "+Math.round(x).toLocaleString("en-US"); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+
+var DEMO_DATE = Date.UTC(2026,8,12);
+var CP = { cargo:55000, rate:10000, allowedH:132, turnH:12, demDay:15000, desDay:7500, timeBarDays:90 };
+
+var EVENTS = [
+  { key:"arrival",  ko:"도착·정박지 투묘", en:"Arrived & anchored at K Port anchorage", t:T(1,6),  conf:98 },
+  { key:"nor",      ko:"NOR 제출 (최초)", en:"Notice of Readiness tendered", t:T(1,8), conf:97 },
+  { key:"allfast",  ko:"접안 완료", en:"All fast at berth No.3", t:T(3,10), conf:99 },
+  { key:"holdFail", ko:"선창 검사 불합격", en:"Holds inspected - FAILED (holds not clean)", t:T(3,11), conf:96 },
+  { key:"holdPass", ko:"재검사 합격", en:"Holds re-inspected - passed", t:T(3,15), conf:71, low:true, scanTime:"03/09/2026  15OO" },
+  { key:"comm",     ko:"하역 개시", en:"Commenced discharging", t:T(3,16), conf:98 },
+  { key:"rain1s",   ko:"우천 하역 중단 시작", en:"Rain - discharging stopped", t:T(5,13), conf:95 },
+  { key:"rain1e",   ko:"우천 하역 중단 종료", en:"Rain stopped - discharging resumed", t:T(5,19), conf:94 },
+  { key:"rain2s",   ko:"우천 하역 중단 시작", en:"Rain - discharging stopped", t:T(7,22), conf:93 },
+  { key:"rain2e",   ko:"우천 하역 중단 종료", en:"Rain stopped - discharging resumed", t:T(8,1), conf:64, low:true, scanTime:"08/09/2026  0l00" },
+  { key:"compl",    ko:"하역 완료", en:"Completed discharging", t:T(9,14), conf:99 },
+  { key:"docs",     ko:"서류 완료", en:"Documents on board", t:T(9,16), conf:97 }
+];
+var state = {
+  ev:{}, confirmed:{}, uploaded:false, decision:"A", calcDone:false, finalized:false, approval:false, lang:"ko", screen:1
+};
+EVENTS.forEach(function(e){ state.ev[e.key]=e.t; });
+
+/* ---------- laytime rule engine ---------- */
+function phase(t){
+  var ev=state.ev;
+  if(t<ev.allfast) return "정박지 대기 (WIBON: 접안 전이라도 산입)";
+  if(t<ev.holdFail) return "접안 후 선창 검사 대기";
+  if(t<ev.comm) return "하역 준비";
+  return "하역 중";
+}
+function compute(dec){
+  var ev=state.ev, end=ev.compl, allowed=CP.allowedH;
+  var exc=[
+    { s:ev.holdFail, e:ev.holdPass, label:"선창 검사 불합격 → 재검사 합격", clause:"제5조 검사 불합격 시간 제외" },
+    { s:ev.rain1s, e:ev.rain1e, label:"우천 하역 중단", clause:"제4조 우천 제외 (WWD)" },
+    { s:ev.rain2s, e:ev.rain2e, label:"우천 하역 중단", clause:"제4조 우천 제외 (WWD)" }
+  ];
+  var r={ dec:dec, rows:[], start:null, expiry:null, used:0, demH:0, demAmt:0, desH:0, desAmt:0, ooda:null, commenced:true };
+  if(dec==="C"){ r.commenced=false; return r; }
+  var start = dec==="A" ? ev.nor + CP.turnH*H : ev.comm;
+  r.start=start;
+  var pts=[start,end];
+  ["allfast","holdFail","holdPass","comm","rain1s","rain1e","rain2s","rain2e"].forEach(function(k){ if(ev[k]>start && ev[k]<end) pts.push(ev[k]); });
+  pts=pts.filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
+  var cum=0, expiry=null;
+  for(var i=0;i<pts.length-1;i++){
+    var s=pts[i], e=pts[i+1]; if(e<=s) continue;
+    var x=null; for(var j=0;j<exc.length;j++){ if(s>=exc[j].s && e<=exc[j].e){ x=exc[j]; break; } }
+    var desc = x ? x.label : phase(s);
+    if(expiry===null){
+      if(x){ r.rows.push({s:s,e:e,desc:desc,kind:"excl",h:(e-s)/H,cum:cum,basis:"C/P "+x.clause}); continue; }
+      var dur=(e-s)/H;
+      if(cum+dur < allowed-1e-9){ cum+=dur; r.rows.push({s:s,e:e,desc:desc,kind:"lay",h:dur,cum:cum,basis:basisFor(s)}); }
+      else{
+        var need=allowed-cum, ex=s+need*H; cum=allowed;
+        r.rows.push({s:s,e:ex,desc:desc,kind:"lay",h:need,cum:cum,basis:basisFor(s)});
+        expiry=ex; r.rows.push({mark:true,t:ex});
+        if(e>ex) r.rows.push({s:ex,e:e,desc:desc,kind:"dem",h:(e-ex)/H,cum:null,basis:"C/P 제6조 체선료"});
+      }
+    } else {
+      var row={s:s,e:e,desc:desc,kind:"dem",h:(e-s)/H,cum:null,basis:"C/P 제6조 체선료"};
+      if(x){ row.note="체선 중이므로 제외 조항 미적용 (한번 체선이면 계속 체선)"; r.ooda={s:s,e:e,h:(e-s)/H}; }
+      r.rows.push(row);
+    }
+  }
+  r.expiry=expiry; r.used=cum;
+  if(expiry!==null){ r.demH=(end-expiry)/H; r.demAmt=r.demH/24*CP.demDay; }
+  else { r.desH=allowed-cum; r.desAmt=r.desH/24*CP.desDay; }
+  return r;
+}
+function basisFor(t){ return t<state.ev.allfast ? "C/P 제3조 WIBON" : "C/P 제2조 허용 정박시간"; }
+function amountOf(r){ return r.expiry!==null ? r.demAmt : 0; }
+
+/* ---------- tooltip & toast ---------- */
+var tip=$("tip");
+document.addEventListener("mousemove",function(ev){
+  var el=ev.target.closest ? ev.target.closest("[data-tip]") : null;
+  if(!el){ tip.classList.remove("on"); return; }
+  tip.innerHTML=el.getAttribute("data-tip");
+  var x=ev.clientX+14, y=ev.clientY+14, w=tip.offsetWidth, h=tip.offsetHeight;
+  if(x+w>window.innerWidth-8) x=ev.clientX-w-14;
+  if(y+h>window.innerHeight-8) y=ev.clientY-h-14;
+  tip.style.left=x+"px"; tip.style.top=y+"px"; tip.classList.add("on");
+});
+var toastTimer=null;
+function toast(msg){ var t=$("toast"); t.textContent=msg; t.classList.add("on"); clearTimeout(toastTimer); toastTimer=setTimeout(function(){t.classList.remove("on");},2600); }
+
+/* ---------- navigation ---------- */
+var navBtns=[].slice.call(document.querySelectorAll(".steps [data-go]"));
+function go(n){
+  state.screen=n;
+  for(var i=1;i<=5;i++){ $("s"+i).classList.toggle("on",i===n); }
+  navBtns.forEach(function(b){ var k=+b.getAttribute("data-go"); if(k===n) b.setAttribute("aria-current","step"); else b.removeAttribute("aria-current"); });
+  renderAll();
+  window.scrollTo(0,0);
+}
+navBtns.forEach(function(b){ b.addEventListener("click",function(){ go(+b.getAttribute("data-go")); }); });
+function stepDone(){
+  var lows=EVENTS.filter(function(e){return e.low;});
+  var allConf=lows.every(function(e){return state.confirmed[e.key];});
+  return {1:state.uploaded, 2:allConf, 3:state.calcDone, 4:state.approval, 5:state.finalized};
+}
+
+/* ---------- S1 ---------- */
+function statusTag(){
+  if(state.approval) return '<span class="tag tag-warn">승인 대기</span>';
+  if(state.finalized) return '<span class="tag tag-ok">정산서 확정</span>';
+  if(state.calcDone) return '<span class="tag tag-run">정산서 작성</span>';
+  if(stepDone()[2]) return '<span class="tag tag-run">계산 검토</span>';
+  if(state.uploaded) return '<span class="tag tag-warn">판독 확인 필요</span>';
+  return '<span class="tag tag-wait">문서 대기</span>';
+}
+function deadline(){ return state.ev.compl + CP.timeBarDays*DAY; }
+function dday(){ var d=new Date(deadline()); var dl=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); return Math.round((dl-DEMO_DATE)/DAY); }
+function renderS1(){
+  $("st-k").innerHTML=statusTag();
+  $("dd-k").textContent="D-"+dday();
+  var need = state.uploaded ? EVENTS.filter(function(e){return e.low && !state.confirmed[e.key];}).length : 0;
+  $("k-need").innerHTML=need+"<small>건</small>";
+}
+var FILES=[
+  {fn:"SOF_KPort_20260909_scan.pdf", cls:"정박 사실기록(SOF)으로 분류, 이벤트 12건 추출"},
+  {fn:"NOR_20260901.pdf", cls:"하역준비완료 통지(NOR)로 분류, 제출 시각 확인"},
+  {fn:"CP_Recap_MV_Gasang.docx", cls:"용선계약(C/P)으로 분류, 정박기간 관련 조항 7개 구조화"}
+];
+$("b-sample").addEventListener("click",function(){
+  var ul=$("files"); ul.innerHTML="";
+  this.disabled=true;
+  FILES.forEach(function(f,i){
+    var li=document.createElement("li");
+    li.innerHTML='<span class="fn">'+esc(f.fn)+'</span><span class="tag tag-wait" id="fs'+i+'">판독 중</span><span class="cls" id="fc'+i+'">문서 유형 분류와 판독을 진행하고 있습니다</span><span></span><span class="bar"><i id="fb'+i+'"></i></span>';
+    ul.appendChild(li);
+  });
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  FILES.forEach(function(f,i){
+    setTimeout(function(){ $("fb"+i).style.width="100%"; }, reduce?0:60+i*250);
+    setTimeout(function(){
+      $("fs"+i).className="tag tag-ok"; $("fs"+i).textContent="판독 완료"; $("fc"+i).textContent=f.cls;
+      if(i===FILES.length-1){ state.uploaded=true; $("b-to2").disabled=false; $("s1hint").textContent="판독이 끝났습니다. 확인이 필요한 항목이 2건 있습니다."; renderAll(); }
+    }, reduce?0:900+i*350);
+  });
+});
+$("b-to2").addEventListener("click",function(){ go(2); });
+
+/* ---------- S2 ---------- */
+function scanLine(e){
+  var d=new Date(state.ev[e.key]);
+  var t = e.scanTime || (p2(d.getUTCDate())+"/"+p2(d.getUTCMonth()+1)+"/2026  "+p2(d.getUTCHours())+p2(d.getUTCMinutes()));
+  return '<li id="sc-'+e.key+'" class="'+(e.low?"hand":"")+'"><span>'+t+'</span><span>'+esc(e.en)+'</span></li>';
+}
+function toLocalInput(ts){ var d=new Date(ts); return "2026-"+p2(d.getUTCMonth()+1)+"-"+p2(d.getUTCDate())+"T"+p2(d.getUTCHours())+":"+p2(d.getUTCMinutes()); }
+function fromLocalInput(v){ var m=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v); if(!m) return null; return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]); }
+function renderS2(){
+  $("scan-lines").innerHTML=EVENTS.map(scanLine).join("");
+  var rows="";
+  EVENTS.forEach(function(e){
+    var low=e.low, ok=state.confirmed[e.key];
+    rows+='<tr class="'+(low&&!ok?"need":"")+'"><td><b>'+esc(e.ko)+'</b>';
+    if(low){
+      rows+= ok ? '<div class="acts"><span class="tag tag-ok">담당자 확인 완료</span></div>'
+        : '<div class="acts"><button class="btn ghost small" data-src="'+e.key+'">원문 대조</button><button class="btn small" data-ok="'+e.key+'">이대로 확인</button><button class="btn ghost small" data-ed="'+e.key+'">수정</button></div>'+
+          '<div class="edit" id="ed-'+e.key+'"><input type="datetime-local" id="in-'+e.key+'" value="'+toLocalInput(state.ev[e.key])+'" min="2026-09-01T00:00" max="2026-09-10T00:00" aria-label="'+esc(e.ko)+' 일시 수정"><button class="btn small" data-save="'+e.key+'">저장 후 확인</button><span class="err" id="er-'+e.key+'"></span></div>';
+    }
+    rows+='</td><td class="num">'+dt(state.ev[e.key])+'</td><td><span class="conf '+(e.conf<80?"low":"")+'"><span class="m"><i style="width:'+e.conf+'%"></i></span>'+e.conf+'%</span></td></tr>';
+  });
+  $("ev-rows").innerHTML=rows;
+  var lows=EVENTS.filter(function(e){return e.low;}), left=lows.filter(function(e){return !state.confirmed[e.key];});
+  $("conf-sum").textContent="12건 추출, 확인 필요 "+left.length+"건";
+  if(left.length){
+    $("need-alert").className="alert alert-warn";
+    $("need-text").innerHTML="<b>확인이 필요한 항목 "+left.length+"건</b> 손글씨로 기록된 시각("+left.map(function(e){return esc(e.ko);}).join(", ")+")은 판독 신뢰도가 낮습니다. 원문 대조 후 확인하거나 수정하세요.";
+    $("s2hint").textContent="확인하지 않은 항목이 있어도 계산은 할 수 있지만, 정산서에 미확인으로 표시됩니다.";
+  } else {
+    $("need-alert").className="alert alert-ok";
+    $("need-text").innerHTML="<b>판독 확인 완료</b> 신뢰도가 낮은 2건을 담당자가 확인했습니다. 나머지 10건은 신뢰도 90% 이상으로 자동 반영했습니다.";
+    $("s2hint").textContent="";
+  }
+  drawFacts($("tl-facts"),0);
+}
+$("ev-rows").addEventListener("click",function(ev){
+  var b=ev.target.closest("button"); if(!b) return;
+  var k;
+  if((k=b.getAttribute("data-src"))){ document.querySelectorAll(".scan li").forEach(function(li){li.classList.remove("hl");}); var li=$("sc-"+k); li.classList.add("hl"); li.scrollIntoView({block:"nearest",behavior:"smooth"}); }
+  else if((k=b.getAttribute("data-ok"))){ state.confirmed[k]=true; afterEdit(); toast("확인했습니다: "+lbl(k)+" "+dt(state.ev[k])); }
+  else if((k=b.getAttribute("data-ed"))){ $("ed-"+k).classList.toggle("on"); }
+  else if((k=b.getAttribute("data-save"))){
+    var v=fromLocalInput($("in-"+k).value), ev2=state.ev, msg="";
+    if(v===null) msg="일시를 입력하세요.";
+    else if(k==="holdPass" && !(v>ev2.holdFail && v<=ev2.comm)) msg="재검사 합격은 검사 불합격(09-03 11:00) 이후, 하역 개시(09-03 16:00) 이전이어야 합니다.";
+    else if(k==="rain2e" && !(v>ev2.rain2s && v<ev2.compl)) msg="우천 중단 종료는 중단 시작(09-07 22:00) 이후, 하역 완료 이전이어야 합니다.";
+    if(msg){ $("er-"+k).textContent=msg; return; }
+    state.ev[k]=v; state.confirmed[k]=true; state.calcDone=false; state.finalized=false; state.approval=false;
+    afterEdit(); toast("수정해 확인했습니다. 정박기간이 다시 계산됩니다.");
+  }
+});
+function lbl(k){ for(var i=0;i<EVENTS.length;i++) if(EVENTS[i].key===k) return EVENTS[i].ko; return k; }
+function afterEdit(){ renderAll(); }
+$("b-to3").addEventListener("click",function(){ go(3); });
+
+/* ---------- timelines ---------- */
+var T0=T(1,0), T1=T(10,0), X0=96, X1=988;
+function X(t){ return X0+(t-T0)/(T1-T0)*(X1-X0); }
+function rect(x1,x2,y,h,fill,tipTxt,extra){ var w=Math.max(0,x2-x1); return '<rect x="'+x1.toFixed(1)+'" y="'+y+'" width="'+w.toFixed(1)+'" height="'+h+'" fill="'+fill+'"'+(extra||"")+(tipTxt?' data-tip="'+esc(tipTxt)+'"':'')+'/>'; }
+function axis(y,bottom){
+  var s='';
+  for(var d=1; d<=10; d++){ var x=X(T(d,0)); s+='<line x1="'+x+'" x2="'+x+'" y1="8" y2="'+bottom+'" stroke="#E3E8EC" stroke-width="1"/>'; if(d<10) s+='<text x="'+(x+3)+'" y="'+y+'" font-size="11" fill="#7A8792">09-'+p2(d)+'</text>'; }
+  return s;
+}
+function drawFactsLane(y){
+  var ev=state.ev, h=22, s='';
+  s+=rect(X(ev.arrival),X(ev.allfast),y,h,"#9DB8CD","정박지 대기<br>"+dt(ev.arrival)+" ~ "+dt(ev.allfast)+"<br>"+hm((ev.allfast-ev.arrival)/H));
+  s+=rect(X(ev.allfast),X(ev.holdFail),y,h,"#5B86A6","접안 후 검사 대기<br>"+dt(ev.allfast)+" ~ "+dt(ev.holdFail));
+  s+=rect(X(ev.holdFail),X(ev.holdPass),y,h,"#D49A22","선창 검사 불합격 → 재검사 합격<br>"+dt(ev.holdFail)+" ~ "+dt(ev.holdPass)+"<br>"+hm((ev.holdPass-ev.holdFail)/H));
+  s+=rect(X(ev.holdPass),X(ev.comm),y,h,"#5B86A6","하역 준비<br>"+dt(ev.holdPass)+" ~ "+dt(ev.comm));
+  s+=rect(X(ev.comm),X(ev.compl),y,h,"#1C4B6E","하역 중<br>"+dt(ev.comm)+" ~ "+dt(ev.compl));
+  [["rain1s","rain1e"],["rain2s","rain2e"]].forEach(function(p){ s+=rect(X(ev[p[0]]),X(ev[p[1]]),y,h,"url(#hatchL)","우천 하역 중단<br>"+dt(ev[p[0]])+" ~ "+dt(ev[p[1]])+"<br>"+hm((ev[p[1]]-ev[p[0]])/H)); });
+  var nx=X(ev.nor);
+  s+='<line x1="'+nx+'" x2="'+nx+'" y1="'+(y-8)+'" y2="'+(y+h+2)+'" stroke="#172430" stroke-width="1.5"/><path d="M'+nx+' '+(y-8)+' l9 3.5 l-9 3.5z" fill="#172430"/>';
+  s+='<text x="'+(nx+11)+'" y="'+(y-1)+'" font-size="11" fill="#172430" font-weight="700" data-tip="NOR 제출 (최초)<br>'+dt(ev.nor)+'">NOR</text>';
+  return s;
+}
+function drawFacts(svg){
+  var s=axis(112,100);
+  s+='<text x="0" y="62" font-size="12.5" fill="#4B5A66" font-weight="600">SOF 기록</text>';
+  s+=drawFactsLane(46);
+  svg.innerHTML=s;
+}
+function drawCalc(svg,r){
+  var s=axis(162,150), ev=state.ev, y2=96, h=24;
+  s+='<text x="0" y="57" font-size="12.5" fill="#4B5A66" font-weight="600">SOF 기록</text>';
+  s+='<text x="0" y="'+(y2+16)+'" font-size="12.5" fill="#4B5A66" font-weight="600">산입 결과</text>';
+  s+=drawFactsLane(41);
+  s+='<rect x="'+X(ev.arrival)+'" y="'+y2+'" width="'+(X(ev.compl)-X(ev.arrival))+'" height="'+h+'" fill="#FFFFFF" stroke="#C9D2D9" stroke-width="1"/>';
+  if(!r.commenced){
+    s+='<rect x="'+X(ev.arrival)+'" y="'+y2+'" width="'+(X(ev.compl)-X(ev.arrival))+'" height="'+h+'" fill="url(#hatchG)" opacity=".55" data-tip="정박기간 미개시<br>유효한 NOR가 없고 권리 포기가 인정되지 않음"/>';
+    s+='<text x="'+((X(ev.arrival)+X(ev.compl))/2)+'" y="'+(y2+16)+'" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4B5A66">정박기간 미개시: 체선료 청구 불가</text>';
+  } else {
+    r.rows.forEach(function(row){
+      if(row.mark) return;
+      var fill = row.kind==="lay" ? "#2F6A93" : row.kind==="excl" ? "url(#hatchG)" : "#B4372A";
+      var label = row.kind==="lay" ? "정박기간 산입" : row.kind==="excl" ? "제외 ("+row.basis+")" : "체선"+(row.note?" (계속 체선 원칙)":"");
+      s+=rect(X(row.s),X(row.e),y2,h,fill,label+"<br>"+esc(row.desc)+"<br>"+dt(row.s)+" ~ "+dt(row.e)+" · "+hm(row.h));
+    });
+    var sx=X(r.start);
+    s+='<line x1="'+sx+'" x2="'+sx+'" y1="'+(y2-6)+'" y2="'+(y2+h+6)+'" stroke="#172430" stroke-width="1.5"/>';
+    s+='<text x="'+(sx+4)+'" y="'+(y2-9)+'" font-size="11" fill="#172430" font-weight="700">기산 '+dt(r.start)+'</text>';
+    if(r.expiry!==null){
+      var ex=X(r.expiry);
+      s+='<line x1="'+ex+'" x2="'+ex+'" y1="'+(y2-6)+'" y2="'+(y2+h+6)+'" stroke="#B4372A" stroke-width="2"/>';
+      s+='<text x="'+(ex+4)+'" y="'+(y2-9)+'" font-size="11" fill="#B4372A" font-weight="700">만료 '+dt(r.expiry)+'</text>';
+    }
+  }
+  svg.innerHTML=s;
+}
+
+/* ---------- S3 ---------- */
+var DECS=[
+  {k:"A", lb:"최초 NOR 유효로 판단", why:"검사 불합격부터 재검사 합격까지의 시간만 정박기간에서 뺍니다 (C/P 제5조).", src:"C/P 제5조 문언 해석 (선주 측 입장)"},
+  {k:"B", lb:"NOR 무효, 용선자 권리 포기 인정", why:"용선자가 이의 없이 하역을 시작했으므로 하역 개시 시점부터 기산합니다.", src:"The Happy Day (영국 항소법원, 2002) 취지"},
+  {k:"C", lb:"NOR 무효, 권리 포기 불인정", why:"유효한 NOR가 없고 권리 포기가 입증되지 않아 정박기간이 시작되지 않습니다.", src:"Trans Trade RK v Sebat Shipping (영국 상사법원, 2026)"}
+];
+var CLAUSES=[
+  {no:"제2조 하역률·허용 정박시간", q:"Cargo to be discharged at the average rate of 10,000 metric tons per weather working day of 24 consecutive hours, Sundays and holidays included (WWD SHINC).", ko:"하역률 일 10,000톤, 일요일·공휴일 포함. 화물 55,000톤이므로 허용 정박시간은 5.5일입니다.", chips:["허용 132시간","WWD SHINC"]},
+  {no:"제3조 정박기간 기산", q:"Laytime to commence 12 hours after Notice of Readiness has been tendered, whether in berth or not (WIBON).", ko:"NOR 제출 12시간 후부터 기산하며, 접안 전 정박지 대기도 산입합니다.", chips:["NOR + 12시간","WIBON"]},
+  {no:"제4조 우천 제외", q:"Time lost due to rain or bad weather preventing discharging shall not count as laytime.", ko:"비·악천후로 하역하지 못한 시간은 정박기간에서 뺍니다.", chips:["우천 시간 제외"]},
+  {no:"제5조 선창 검사", q:"Should the vessel fail hold inspection, time lost from failure until the vessel passes re-inspection shall not count as laytime.", ko:"선창 검사에 불합격하면 재검사 합격까지의 시간을 뺍니다.", chips:["검사 불합격 시간 제외"]},
+  {no:"제6조 체선료", q:"Demurrage at the rate of USD 15,000 per day or pro rata for part of a day.", ko:"체선료는 일 15,000달러, 하루 미만은 시간 비례로 계산합니다.", chips:["일 USD 15,000","시간 비례"]},
+  {no:"제7조 조출료", q:"Despatch at half the demurrage rate on laytime saved.", ko:"절약한 정박시간에 대해 체선료의 절반을 조출료로 받습니다.", chips:["일 USD 7,500"]},
+  {no:"제8조 청구 기한", q:"Any demurrage claim shall be presented with supporting documents within 90 days of completion of discharging, failing which the claim shall be deemed waived.", ko:"하역 완료 후 90일 안에 증빙과 함께 청구하지 않으면 청구권이 소멸합니다.", chips:["하역 완료 + 90일"]}
+];
+function renderS3(){
+  var all={}; DECS.forEach(function(d){ all[d.k]=compute(d.k); });
+  $("decide").innerHTML=DECS.map(function(d){
+    var r=all[d.k], amt=amountOf(r), on=state.decision===d.k;
+    var sub = !r.commenced ? "정박기간 미개시" : (r.expiry!==null ? "체선 "+hm(r.demH) : "조출 "+hm(r.desH));
+    return '<label class="opt'+(on?" on":"")+'"><input type="radio" name="dec" value="'+d.k+'"'+(on?" checked":"")+'><span class="k"><span class="lb">'+d.k+'. '+esc(d.lb)+'</span><span class="rd" aria-hidden="true"></span></span>'+
+      '<div class="amt num'+(amt===0?" zero":"")+'">'+usd0(amt)+'</div><div class="why"><b>'+sub+'</b> · '+esc(d.why)+'</div><div class="src">'+esc(d.src)+'</div></label>';
+  }).join("");
+  var r=all[state.decision], d=DECS.filter(function(x){return x.k===state.decision;})[0];
+  $("dec-name").textContent="판단 "+d.k+": "+d.lb;
+  var amt=amountOf(r);
+  var res='';
+  res+='<div><dt>허용 정박시간</dt><dd class="num">132시간</dd></div>';
+  res+='<div><dt>정박기간 기산</dt><dd class="num">'+(r.commenced?dt(r.start):"미개시")+'</dd></div>';
+  res+='<div><dt>정박기간 만료</dt><dd class="num">'+(r.commenced?(r.expiry!==null?dt(r.expiry):"만료 전 하역 완료"):"-")+'</dd></div>';
+  res+='<div><dt>'+(r.expiry===null&&r.commenced?"조출 시간":"체선 시간")+'</dt><dd class="num">'+(r.commenced?(r.expiry!==null?hm(r.demH):hm(r.desH)):"-")+'</dd></div>';
+  if(r.commenced && r.expiry===null) res+='<div class="hero"><dt>조출료</dt><dd class="num" style="color:var(--ok)">'+usd(r.desAmt)+'</dd></div>';
+  else res+='<div class="hero'+(amt===0?" zero":"")+'"><dt>체선료</dt><dd class="num">'+usd(amt)+'</dd></div>';
+  $("result").innerHTML=res;
+  drawCalc($("tl-calc"),r);
+  var ev=state.ev, pre;
+  if(state.decision==="A") pre="최초 NOR "+dt(ev.nor)+" 제출, 12시간 후인 <b>"+dt(r.start)+"</b>부터 기산 (C/P 제3조). 검사 불합격 시간은 제5조로 제외.";
+  else if(state.decision==="B") pre="최초 NOR는 무효로 보되 용선자가 이의 없이 하역을 시작했으므로 <b>하역 개시 "+dt(ev.comm)+"</b>부터 기산.";
+  else pre="유효한 NOR가 없고 용선자의 권리 포기가 입증되지 않아 정박기간이 시작되지 않음. 하역항 체선료는 청구하지 않습니다.";
+  $("prenote").innerHTML=pre;
+  var rows='';
+  if(!r.commenced){
+    rows='<tr><td colspan="6" class="muted">계산할 구간이 없습니다. <b style="color:var(--ink)">AI 권고:</b> 재검사 합격 직후 NOR를 다시 제출하는 절차를 운항 지침에 넣으면 같은 분쟁을 막을 수 있습니다.</td></tr>';
+  } else r.rows.forEach(function(row){
+    if(row.mark){ rows+='<tr class="k-mark"><td class="num" colspan="6">'+dt(row.t)+' 정박기간 만료 (132시간 산입 완료), 이후 체선</td></tr>'; return; }
+    var kind = row.kind==="lay"?'<span class="tag tag-run">산입</span>':row.kind==="excl"?'<span class="tag tag-wait">제외</span>':'<span class="tag tag-dem">체선</span>';
+    rows+='<tr class="k-'+row.kind+'"><td class="num" style="white-space:nowrap">'+dt(row.s)+' ~ '+dt(row.e)+'</td><td>'+esc(row.desc)+(row.note?'<span class="note">'+esc(row.note)+'</span>':'')+'</td><td class="r num">'+hh(row.h)+'</td><td>'+kind+'</td><td class="r num">'+(row.cum!=null?hh(row.cum):"")+'</td><td class="muted" style="font-size:13px">'+esc(row.basis)+'</td></tr>';
+  });
+  $("stmt").innerHTML=rows;
+  if(r.ooda){ $("ooda").hidden=false; $("ooda-t").innerHTML="정박기간이 "+dt(r.expiry)+"에 끝난 뒤 발생한 우천 중단("+dt(r.ooda.s)+" ~ "+dt(r.ooda.e)+", "+hm(r.ooda.h)+")은 제외하지 않고 체선으로 계산했습니다. 이 원칙을 빠뜨리면 체선료가 "+usd0(r.ooda.h/24*CP.demDay)+" 적게 청구됩니다."; }
+  else $("ooda").hidden=true;
+  $("clauses").innerHTML=CLAUSES.map(function(c){ return '<div class="clause"><div class="no">'+esc(c.no)+'</div><q>'+esc(c.q)+'</q><div class="ko">'+esc(c.ko)+'</div><div class="chips">'+c.chips.map(function(x){return '<span class="chip">'+esc(x)+'</span>';}).join("")+'</div></div>'; }).join("");
+}
+$("decide").addEventListener("change",function(ev){
+  if(ev.target.name==="dec"){ state.decision=ev.target.value; state.calcDone=false; state.finalized=false; state.approval=false; renderAll(); toast("판단 "+state.decision+" 기준으로 다시 계산했습니다."); }
+});
+$("b-to4").addEventListener("click",function(){ state.calcDone=true; go(4); toast("정산서 초안을 만들었습니다."); });
+
+/* ---------- S4 ---------- */
+function renderS4(){
+  var r=compute(state.decision), ev=state.ev, ko=state.lang==="ko", amt=amountOf(r);
+  var d=DECS.filter(function(x){return x.k===state.decision;})[0];
+  var unconf=EVENTS.filter(function(e){return e.low && !state.confirmed[e.key];});
+  var h='';
+  if(ko){
+    h+='<h4>정박기간·체선료 정산서</h4><div class="sub">Laytime Statement · '+(state.finalized?"확정본":"초안")+'</div>';
+    h+='<dl><dt>선박</dt><dd>M/V 가상호 (수프라막스, 가상)</dd><dt>항차</dt><dd class="num">V-2609-K</dd><dt>양하항</dt><dd>국내 K항 (가상)</dd><dt>화물</dt><dd class="num">석탄 55,000톤</dd><dt>용선계약</dt><dd class="num">2026-07-20 항해용선계약 (가상)</dd></dl>';
+    h+='<div class="sum num">';
+    h+='<div><span>허용 정박시간</span><span>5일 12시간 (132시간)</span></div>';
+    h+='<div><span>정박기간 기산</span><span>'+(r.commenced?dtFull(r.start):"미개시")+'</span></div>';
+    h+='<div><span>정박기간 만료</span><span>'+(r.commenced&&r.expiry!==null?dtFull(r.expiry):"-")+'</span></div>';
+    h+='<div><span>하역 완료</span><span>'+dtFull(ev.compl)+'</span></div>';
+    h+='<div><span>체선 시간</span><span>'+(r.commenced&&r.expiry!==null?dhm(r.demH)+" ("+hm(r.demH)+")":"-")+'</span></div>';
+    h+='<div class="'+(amt===0?"zero":"")+'"><span>청구 체선료</span><span>'+(r.commenced&&r.expiry!==null?hm(r.demH)+" × USD 15,000/일 = ":"")+usd(amt)+'</span></div></div>';
+    h+='<h5>쟁점 처리</h5><ul><li>최초 NOR 유효성: 판단 '+d.k+' ('+esc(d.lb)+') 적용. '+esc(d.why)+' 근거: '+esc(d.src)+'.</li>';
+    if(r.ooda) h+='<li>정박기간 만료 후 우천 중단 '+hm(r.ooda.h)+'은 한번 체선이면 계속 체선 원칙에 따라 체선으로 산입.</li>';
+    if(!r.commenced) h+='<li>하역항 체선료는 청구하지 않으며, 판단 근거를 내부 기록으로 보관.</li>';
+    h+='</ul><h5>적용 조항</h5><ul><li>C/P 제2조 허용 정박시간, 제3조 기산(WIBON), 제4조 우천 제외, 제5조 선창 검사, 제6조 체선료, 제8조 청구 기한</li></ul>';
+    h+='<h5>첨부</h5><ul><li>SOF 스캔본, NOR, 구간별 계산표(AI 생성, 담당자 검토)</li>'+(unconf.length?'<li style="color:var(--dem)">미확인 판독 항목 '+unconf.length+'건 포함: '+unconf.map(function(e){return esc(e.ko);}).join(", ")+'</li>':'<li>판독 신뢰도가 낮은 항목 2건은 담당자 확인 완료</li>')+'</ul>';
+    h+='<div class="sign"><span>작성: A해운 정산팀 (가상)</span><span>청구 기한: '+dOnly(deadline())+'</span></div>';
+  } else {
+    h+='<h4>Laytime Statement</h4><div class="sub">'+(state.finalized?"Final":"Draft")+' · Demurrage claim</div>';
+    h+='<dl><dt>Vessel</dt><dd>M/V Gasang (Supramax, fictitious)</dd><dt>Voyage</dt><dd class="num">V-2609-K</dd><dt>Discharge port</dt><dd>K Port, Korea (fictitious)</dd><dt>Cargo</dt><dd class="num">55,000 MT coal</dd><dt>Charter party</dt><dd class="num">Voyage C/P dated 2026-07-20 (fictitious)</dd></dl>';
+    h+='<div class="sum num">';
+    h+='<div><span>Laytime allowed</span><span>5 days 12 hours (132 h)</span></div>';
+    h+='<div><span>Laytime commenced</span><span>'+(r.commenced?dtFull(r.start):"Not commenced")+'</span></div>';
+    h+='<div><span>Laytime expired</span><span>'+(r.commenced&&r.expiry!==null?dtFull(r.expiry):"-")+'</span></div>';
+    h+='<div><span>Discharging completed</span><span>'+dtFull(ev.compl)+'</span></div>';
+    h+='<div><span>Time on demurrage</span><span>'+(r.commenced&&r.expiry!==null?hmEn(r.demH):"-")+'</span></div>';
+    h+='<div class="'+(amt===0?"zero":"")+'"><span>Demurrage due</span><span>'+(r.commenced&&r.expiry!==null?hmEn(r.demH)+" at USD 15,000/day = ":"")+usd(amt)+'</span></div></div>';
+    var en={A:"Initial NOR treated as valid; time lost between failed and passed hold inspection excluded (Clause 5).",B:"Initial NOR treated as invalid but waived by charterers; laytime counted from commencement of discharging.",C:"Initial NOR invalid and no waiver established; laytime did not commence (Trans Trade RK v Sebat Shipping, 2026)."};
+    h+='<h5>Issues</h5><ul><li>'+en[state.decision]+'</li>';
+    if(r.ooda) h+='<li>Rain stoppage after expiry of laytime ('+hmEn(r.ooda.h)+') counted: once on demurrage, always on demurrage.</li>';
+    h+='</ul><h5>Clauses applied</h5><ul><li>C/P Clauses 2, 3 (WIBON), 4 (WWD), 5, 6 and 8</li></ul>';
+    h+='<h5>Attachments</h5><ul><li>Statement of Facts, Notice of Readiness, laytime calculation sheet</li></ul>';
+    h+='<div class="sign"><span>Prepared by: A Shipping claims team (fictitious)</span><span>Time bar: '+dOnly(deadline())+'</span></div>';
+  }
+  $("doc").innerHTML=h;
+  $("dday").textContent="D-"+dday();
+  $("ddate").textContent=dOnly(deadline())+"까지";
+  var dl=deadline();
+  $("alarms").innerHTML=[30,7,1].map(function(n){ return '<label><input type="checkbox" checked> '+n+'일 전 알림 ('+dOnly(dl-n*DAY)+')</label>'; }).join("")+'<p class="muted" style="font-size:12.5px">'+(state.finalized?"알림이 등록되었습니다. 정산 담당자와 운항팀장에게 보냅니다.":"정산서를 확정하면 알림이 등록됩니다.")+'</p>';
+  var fl=[
+    {t:"정산서 초안 생성", s:"AI가 계산표와 조항 근거를 붙여 작성", done:true},
+    {t:"담당자 확정", s:"판단과 금액을 검토한 뒤 확정", done:state.finalized, cur:!state.finalized},
+    {t:"운항팀장 승인", s:state.approval?"승인 요청을 보냈습니다. 결재 대기 중":"승인 요청 후 결재", done:false, cur:state.finalized},
+    {t:"청구 발송", s:"승인 후 용선자에게 발송 (시연 범위 밖)", done:false, cur:false}
+  ];
+  $("flow").innerHTML=fl.map(function(f,i){ return '<li class="'+(f.done?"done":(f.cur?"cur":""))+'"><span class="d">'+(f.done?"✓":(i+1))+'</span><span><span class="t">'+f.t+'</span><br><span class="s">'+f.s+'</span></span></li>'; }).join("");
+  $("b-final").disabled=state.finalized;
+  $("b-final").textContent=state.finalized?"확정 완료":"정산서 확정";
+  $("b-appr").disabled=!state.finalized||state.approval;
+  $("b-appr").textContent=state.approval?"승인 요청 완료":"운항팀장 승인 요청";
+}
+document.querySelectorAll(".seg button[data-lang]").forEach(function(b){ b.addEventListener("click",function(){ state.lang=b.getAttribute("data-lang"); document.querySelectorAll(".seg button[data-lang]").forEach(function(x){x.setAttribute("aria-pressed",String(x===b));}); renderS4(); }); });
+document.querySelectorAll(".seg button[data-hub]").forEach(function(b){ b.addEventListener("click",function(){ state.hub=b.getAttribute("data-hub"); document.querySelectorAll(".seg button[data-hub]").forEach(function(x){x.setAttribute("aria-pressed",String(x===b));}); renderS5(); }); });
+$("b-final").addEventListener("click",function(){ state.calcDone=true; state.finalized=true; renderAll(); toast("정산서를 확정했습니다. 청구 기한 알림을 등록했습니다."); });
+$("b-appr").addEventListener("click",function(){ state.approval=true; renderAll(); toast("운항팀장에게 승인 요청을 보냈습니다."); });
+$("b-to5").addEventListener("click",function(){ go(5); });
+
+/* ---------- S5 ---------- */
+var MONTHS=[ {m:"4월",v:30.2,n:4},{m:"5월",v:33.6,n:4},{m:"6월",v:37.1,n:4},{m:"7월",v:40.5,n:4},{m:"8월",v:43.9,n:4},{m:"9월",v:42.0,n:3} ];
+var KN=0, KSUM=0; MONTHS.forEach(function(m){ KN+=m.n; KSUM+=m.v*m.n; });
+var PORTS=[
+  {name:"K항", n:KN, wait:KSUM/KN, demRate:.52},
+  {name:"B항", n:27, wait:35.0, demRate:.44},
+  {name:"D항", n:28, wait:28.7, demRate:.39},
+  {name:"A항", n:31, wait:22.5, demRate:.29},
+  {name:"C항", n:19, wait:18.2, demRate:.21}
+];
+var OVERSEAS=[
+  {name:"P항", n:14, wait:52.6, demRate:.57},
+  {name:"Q항", n:11, wait:44.9, demRate:.45},
+  {name:"R항", n:9,  wait:31.2, demRate:.33},
+  {name:"S항", n:8,  wait:26.4, demRate:.25},
+  {name:"T항", n:6,  wait:19.8, demRate:.17}
+];
+function hubData(){
+  var ev=state.ev, thisWait=(ev.allfast-ev.arrival)/H, r=compute(state.decision), dem=amountOf(r)>0?1:0;
+  var cp=function(p){ return {name:p.name,n:p.n,wait:p.wait,demRate:p.demRate}; };
+  var ports=PORTS.map(cp), ovs=OVERSEAS.map(cp);
+  var months=MONTHS.map(function(m){ return {m:m.m,v:m.v,n:m.n}; });
+  if(state.finalized){
+    var k=ports[0]; k.wait=(k.wait*k.n+thisWait)/(k.n+1); k.demRate=(k.demRate*k.n+dem)/(k.n+1); k.n+=1; k.added=true;
+    var s=months[5]; s.v=(s.v*s.n+thisWait)/(s.n+1); s.n+=1; s.added=true;
+  }
+  return {ports:ports, ovs:ovs, months:months, thisWait:thisWait};
+}
+var LVL_WARN='<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 L19 17 H1 Z" fill="none" stroke="#8A5A00" stroke-width="2" stroke-linejoin="round"/><path d="M10 7.5v4.5M10 14.2v.3" stroke="#8A5A00" stroke-width="2" stroke-linecap="round"/></svg>';
+var LVL_INFO='<svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="#1C4B6E" stroke-width="2"/><path d="M10 9v5M10 6v.3" stroke="#1C4B6E" stroke-width="2" stroke-linecap="round"/></svg>';
+function renderS5(){
+  var d=hubData(), ports=d.ports, ovs=d.ovs, months=d.months, view=state.hub||"dom";
+  var all=ports.concat(ovs), tot=0, wsum=0, dsum=0;
+  all.forEach(function(p){ tot+=p.n; wsum+=p.wait*p.n; dsum+=p.demRate*p.n; });
+  var k=ports[0];
+  var streak=0; for(var q=months.length-1;q>0;q--){ if(months[q].v>months[q-1].v) streak++; else break; }
+  var last=months[months.length-1], riseAll=Math.round((last.v/months[0].v-1)*100);
+  var sigLvl = streak>=3 ? "주의" : "관찰";
+  var sigSub = streak>=3 ? streak+"개월 연속 증가" : "4월 대비 +"+riseAll+"%";
+  $("hub-kpi").innerHTML='<div><dt>국내외 집계 항차</dt><dd class="num">'+tot+'<small>항차'+(k.added?", 이번 항차 포함":"")+'</small></dd></div>'+
+    '<div><dt>평균 정박지 대기</dt><dd class="num">'+(wsum/tot).toFixed(1)+'<small>시간</small></dd></div>'+
+    '<div><dt>체선 발생 비율</dt><dd class="num">'+Math.round(dsum/tot*100)+'<small>%</small></dd></div>'+
+    '<div><dt>K항 대기 신호</dt><dd style="font-size:20px;color:'+(streak>=3?"var(--warn)":"var(--harbor)")+'">'+sigLvl+'<small>'+sigSub+'</small></dd></div>';
+  // bar chart (single series, horizontal)
+  var set = view==="dom" ? ports : ovs;
+  var maxW=0; set.forEach(function(p){ if(p.wait>maxW) maxW=p.wait; });
+  var maxV=Math.ceil((maxW+0.01)/10)*10; if(maxW/maxV>0.8) maxV+=10;
+  var L=64, R=470, top=14, band=40, s='';
+  for(var g=0; g<=maxV; g+=10){ var gx=L+(g/maxV)*(R-L); s+='<line x1="'+gx+'" x2="'+gx+'" y1="'+top+'" y2="'+(top+band*set.length)+'" stroke="#E3E8EC" stroke-width="1"/><text x="'+gx+'" y="'+(top+band*set.length+16)+'" font-size="11" fill="#7A8792" text-anchor="middle">'+g+'</text>'; }
+  s+='<text x="'+R+'" y="'+(top+band*set.length+32)+'" font-size="11" fill="#7A8792" text-anchor="end">시간 (항차 평균)</text>';
+  set.forEach(function(p,i){
+    var hi = view==="dom" && p.name==="K항";
+    var y=top+i*band+(band-22)/2, w=(p.wait/maxV)*(R-L), fill= view==="dom" ? (hi?"#1C4B6E":"#9DB8CD") : "#5B86A6";
+    var label=(view==="ovs"?"해외 ":"")+p.name;
+    var tipTxt=label+(view==="ovs"?" (선적항)":"")+'<br>평균 정박지 대기 '+p.wait.toFixed(1)+'시간<br>집계 '+p.n+'항차, 체선 발생 '+Math.round(p.demRate*100)+'%';
+    s+='<text x="'+(L-10)+'" y="'+(y+15)+'" font-size="13" fill="#172430" text-anchor="end" font-weight="'+(hi?700:500)+'">'+p.name+'</text>';
+    s+='<path d="M'+L+' '+y+' h'+(w-4)+' a4 4 0 0 1 4 4 v14 a4 4 0 0 1 -4 4 h-'+(w-4)+' z" fill="'+fill+'" data-tip="'+tipTxt+'"/>';
+    s+='<rect x="'+L+'" y="'+(y-8)+'" width="'+(R-L)+'" height="38" fill="transparent" data-tip="'+tipTxt+'"/>';
+    s+='<text x="'+(L+w+6)+'" y="'+(y+15)+'" font-size="12.5" fill="#4B5A66" class="num">'+p.wait.toFixed(1)+(p.added?" (이번 항차 반영)":"")+'</text>';
+  });
+  $("ch-bar").setAttribute("viewBox","0 0 520 "+(top+band*set.length+40));
+  $("ch-bar").setAttribute("aria-label",(view==="dom"?"국내 항만":"해외 선적항")+"별 평균 정박지 대기시간 막대 그래프");
+  $("ch-bar").innerHTML=s;
+  $("tb-ports").innerHTML='<thead><tr><th>'+(view==="dom"?"국내 항만":"해외 선적항")+'</th><th class="r">집계 항차</th><th class="r">평균 정박지 대기(시간)</th><th class="r">체선 발생 비율</th></tr></thead><tbody>'+set.map(function(p){return '<tr><td>'+p.name+'</td><td class="r num">'+p.n+'</td><td class="r num">'+p.wait.toFixed(1)+'</td><td class="r num">'+Math.round(p.demRate*100)+'%</td></tr>';}).join("")+'</tbody>';
+  // line chart
+  var lx0=48, lx1=480, ly0=210, ly1=24, vmin=25, vmax=50, l='';
+  function LX(i){ return lx0+i*(lx1-lx0)/(months.length-1); }
+  function LY(v){ return ly0-(v-vmin)/(vmax-vmin)*(ly0-ly1); }
+  for(var gv=vmin; gv<=vmax; gv+=5){ var gy=LY(gv); l+='<line x1="'+lx0+'" x2="'+lx1+'" y1="'+gy+'" y2="'+gy+'" stroke="#E3E8EC" stroke-width="1"/><text x="'+(lx0-8)+'" y="'+(gy+4)+'" font-size="11" fill="#7A8792" text-anchor="end">'+gv+'</text>'; }
+  var pth=months.map(function(m,i){return (i?"L":"M")+LX(i).toFixed(1)+" "+LY(m.v).toFixed(1);}).join(" ");
+  l+='<path d="'+pth+' L'+LX(months.length-1).toFixed(1)+' '+ly0+' L'+lx0+' '+ly0+' Z" fill="#1C4B6E" opacity=".08"/>';
+  l+='<path d="'+pth+'" fill="none" stroke="#1C4B6E" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  months.forEach(function(m,i){
+    var cx=LX(i), cy=LY(m.v);
+    l+='<text x="'+cx+'" y="'+(ly0+18)+'" font-size="11.5" fill="#7A8792" text-anchor="middle">'+m.m+'</text>';
+    l+='<circle cx="'+cx+'" cy="'+cy+'" r="'+(i===months.length-1?5:4)+'" fill="#1C4B6E" stroke="#fff" stroke-width="2"/>';
+    l+='<circle cx="'+cx+'" cy="'+cy+'" r="14" fill="transparent" data-tip="K항 '+m.m+'<br>평균 정박지 대기 '+m.v.toFixed(1)+'시간<br>집계 '+m.n+'항차'+(m.added?" (이번 항차 반영)":"")+'"/>';
+  });
+  l+='<text x="'+(LX(months.length-1)-8)+'" y="'+(LY(last.v)-12)+'" font-size="12.5" fill="#172430" font-weight="700" text-anchor="end">'+last.v.toFixed(1)+'시간</text>';
+  $("ch-line").innerHTML=l;
+  $("tb-month").innerHTML='<thead><tr><th>월</th><th class="r">평균 정박지 대기(시간)</th><th class="r">집계 항차</th></tr></thead><tbody>'+months.map(function(m){return '<tr><td>'+m.m+'</td><td class="r num">'+m.v.toFixed(1)+'</td><td class="r num">'+m.n+'</td></tr>';}).join("")+'</tbody>';
+  // signals
+  var sigHead = streak>=3 ? "K항 정박지 대기시간 "+streak+"개월 연속 증가" : "K항 정박지 대기시간 증가 추세 관찰";
+  var sigBody = (streak>=3 ? months[months.length-1-streak].m+" 이후 매달 늘어 " : "")+"9월 평균 "+last.v.toFixed(1)+"시간으로, 4월보다 "+riseAll+"% 길어졌습니다. 항만 단위 실측 대기 지표로 해진공 해상공급망 모니터링에 제공합니다.";
+  var top1=ovs[0]; ovs.forEach(function(p){ if(p.wait>top1.wait) top1=p; });
+  $("signal").innerHTML='<span class="lvl'+(streak>=3?"":" watch")+'">'+(streak>=3?LVL_WARN:LVL_INFO)+sigLvl+'</span>'+
+    '<div><b>'+sigHead+'</b><p style="font-size:14px;color:var(--ink-2);margin-top:4px">'+sigBody+'</p></div>'+
+    '<span class="lvl watch">'+LVL_INFO+'관찰</span>'+
+    '<div><b>해외 선적항 '+top1.name+' 평균 대기 '+top1.wait.toFixed(1)+'시간, 집계 선적항 중 최장</b><p style="font-size:14px;color:var(--ink-2);margin-top:4px">국내 입출항 정보로는 알 수 없는 해외 선적 구간의 대기 실적입니다. 원자재 수입 항로의 선적 지연 위험을 보여주는 보조 지표로 제공합니다.</p></div>';
+  $("quote").innerHTML='<p style="font-size:14.5px">K항 양하 항차의 최근 6개월 평균 정박지 대기는 <b class="num">'+k.wait.toFixed(1)+'시간</b>, 9월 평균은 <b class="num">'+last.v.toFixed(1)+'시간</b>이고, 체선이 발생한 항차 비율은 <b class="num">'+Math.round(k.demRate*100)+'%</b>입니다.</p>'+
+    '<p style="font-size:14px;color:var(--ink-2);margin-top:8px">다음 K항 항차 견적에는 대기 위험을 반영하고, 용선계약 협상 때 하역률이나 체선료 요율을 조정하는 근거로 쓸 수 있습니다.</p>'+
+    (state.finalized?'<p class="muted" style="font-size:13px;margin-top:8px">이번 항차(대기 '+hm(d.thisWait)+')가 반영된 값입니다.</p>':'<p class="muted" style="font-size:13px;margin-top:8px">S4에서 정산서를 확정하면 이번 항차가 반영됩니다.</p>');
+}
+
+/* ---------- render ---------- */
+function renderAll(){
+  var done=stepDone();
+  navBtns.forEach(function(b){ var k=+b.getAttribute("data-go"); b.classList.toggle("done", !!done[k] && k!==state.screen); });
+  renderS1(); renderS2(); renderS3(); renderS4(); renderS5();
+}
+var hashN=parseInt((location.hash||"").replace(/[^0-9]/g,""),10);
+go(hashN>=1&&hashN<=5?hashN:1);
+window.__proto={state:state,compute:compute,go:go,renderAll:renderAll,dday:dday};
+})();
+</script>
+</body>
+</html>
